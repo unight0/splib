@@ -7,7 +7,6 @@
 #include "splib.h"
 
 // TO DO:
-// Option to disable error reporting/crashes (if possible)
 
 void parse_one(char *source)
 {
@@ -15,7 +14,10 @@ void parse_one(char *source)
 
     Token *tokens = NULL, *tokens_tail = NULL;
 
-    lex_all(lexer, &tokens, &tokens_tail);
+    if (lex_all(lexer, &tokens, &tokens_tail))
+    {
+        exit(1);
+    }
 
     if (lexer->balance)
     {
@@ -26,7 +28,16 @@ void parse_one(char *source)
     Parser *parser = new_parser(NULL, source, tokens);
 
     AST *root = parse_root(parser);
-    
+
+    if (parser->error)
+    {
+        destroy_AST(root);
+        destroy_all_tokens(tokens);
+        destroy_parser(parser);
+        destroy_lexer(lexer);
+        exit(1);
+    }
+
     print_AST(root);
 
     root = destroy_AST(root);

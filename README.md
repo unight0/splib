@@ -123,14 +123,34 @@ All destroy functions accept NULL and always return NULL.
 
 ### Lexing
 
-- `lex_all(lexer, &head, &tail)` -- lex all tokens into a linked list
+- `lex_all(lexer, &head, &tail)` -- lex all tokens into a linked list; returns 0 on success, 1 on error
 - Check `lexer->balance` after lexing to detect unmatched parentheses
 
 ### Parsing
 
-- `parse_root(parser)` -- parse a sequence of S-expressions (returns `AK_ROOT`)
-- `parse(parser)` -- parse a single S-expression
+- `parse_root(parser)` -- parse a sequence of S-expressions (returns `AK_ROOT`); returns NULL on error
+- `parse(parser)` -- parse a single S-expression; returns NULL on EOF or error
 - `print_AST(ast)` -- print the AST tree to stdout
+- Check `parser->error` to distinguish parse errors from EOF
+
+### Error handling
+
+The library never calls `exit()` on malformed input. Lexer functions return NULL on
+error, and `lex_all` returns 1. Parser functions return NULL and set `parser->error`.
+Error messages are printed to stderr via `lexer_error`/`parser_error`.
+
+```c
+if (lex_all(lexer, &head, &tail))
+{
+    // lexer error -- message already printed to stderr
+}
+
+AST *root = parse_root(parser);
+if (parser->error)
+{
+    // parser error -- message already printed to stderr
+}
+```
 
 ## License
 

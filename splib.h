@@ -96,7 +96,8 @@ struct Token
     Token *next;
 };
 
-// Tip: after lexing, check balance before passing the output to the parser
+// Tip: after lexing, check the return value of lex_all() and
+// lexer->balance before passing the output to the parser
 struct Lexer
 {
     ssize_t balance;
@@ -136,6 +137,7 @@ struct AST
 
 struct Parser
 {
+    int error;
     char *file;
     char *source;
     Token *tokens;
@@ -166,8 +168,8 @@ Parser *destroy_parser(Parser *parser);
 
 // Lex all of the tokens from the source, storing them
 // as a linked list with head stored at **head and tail
-// at **tail
-void lex_all(Lexer *lexer, Token **head, Token **tail);
+// at **tail. Returns 0 on success, 1 on error.
+int lex_all(Lexer *lexer, Token **head, Token **tail);
 
 // Destroy the token. Frees the associated value string
 // *token may be NULL. Always returns NULL.
@@ -177,10 +179,12 @@ Token *destroy_token(Token *token);
 // *head may be NULL.
 void destroy_all_tokens(Token *head);
 
-// Parse the root of the program -- a sequence of S-expressions
+// Parse the root of the program -- a sequence of S-expressions.
+// Returns NULL on error; check parser->error.
 AST *parse_root(Parser *parser);
 
-// Parse one single S-expression
+// Parse one single S-expression.
+// Returns NULL on EOF or error; check parser->error to distinguish.
 AST *parse(Parser *parser);
 
 // Destroys the AST node and all of its children.
@@ -243,10 +247,13 @@ void assign_locus(Token *token, Lexer *lexer);
 // Advance the lexer to the next character in source
 void lexer_advance(Lexer *lexer);
 
-// Obtain next token
+// Obtain next token.
+// Returns NULL on EOF or error; check *lexer->position to distinguish
+// ('\0' means EOF, otherwise error).
 Token *lexer_next(Lexer *lexer);
 
-// Self-explanatory, see enum TokenKind
+// Self-explanatory, see enum TokenKind.
+// Return NULL on error.
 Token *lex_string(Lexer *lexer);
 Token *lex_number(Lexer *lexer);
 Token *lex_number_b16(Lexer *lexer);
@@ -261,13 +268,16 @@ Token *lex_char_string(Lexer *lexer);
 /* Parser functions */
 // {{{
 
-// Expect token kind 'kind', return the consumed token, throw error otherwise
+// Expect token kind 'kind', return the consumed token.
+// Returns NULL and sets parser->error otherwise.
 Token *expect(Parser *parser, TokenKind kind);
 
-// Assert that there are tokens remaining to parse, throw error otherwise
+// Assert that there are tokens remaining to parse.
+// Returns NULL and sets parser->error otherwise.
 Token *no_eof(Parser *parser);
 
-// Self-explanatory, see enum ASTKind
+// Self-explanatory, see enum ASTKind.
+// Return NULL and set parser->error on error.
 AST *parse_value(Parser *parser);
 AST *parse_quote(Parser *parser);
 AST *parse_backquote(Parser *parser);
@@ -297,13 +307,13 @@ const char *strASTkind(ASTKind kind);
 
 // {{{
 
-void lex_all(Lexer *lexer, Token **head, Token **tail)
+int lex_all(Lexer *lexer, Token **head, Token **tail)
 {
     Token *token = NULL;
 
     while ((token = lexer_next(lexer)) != NULL)
     {
-        if (*head == NULL) 
+        if (*head == NULL)
         {
             *head = *tail = token;
         }
@@ -313,6 +323,11 @@ void lex_all(Lexer *lexer, Token **head, Token **tail)
             *tail = token;
         }
     }
+
+    if (*lexer->position)
+        return 1;
+
+    return 0;
 }
 
 char *slice(char *begin, char *end)
@@ -650,7 +665,7 @@ Token *lex_string(Lexer *lexer)
     if (*end != '"')
     {
         lexer_error(lexer, "EOF before end of string\n");
-        exit(1);
+        return NULL;
     }
 
     lexer_advance(lexer);
@@ -690,7 +705,7 @@ Token *lex_char_string(Lexer *lexer)
     if (!*lexer->position)
     {
         lexer_error(lexer, "Expected character after #\\\n");
-        exit(1);
+        return NULL;
     }
 
     // Always consume the first character (could be anything)
@@ -794,7 +809,7 @@ Token *lexer_next(Lexer *lexer)
     if (is_namechar(*lexer->position)) return lex_name(lexer);
 
     lexer_error(lexer, "Invalid token '%c'\n", *lexer->position);
-    exit(1);
+    return NULL;
 }
 
 // }}}
@@ -802,6 +817,9 @@ Token *lexer_next(Lexer *lexer)
 /* Parser implementation */
 
 // {{{
+
+// Parsing error propagation macro
+#define PROPERROR() if (parser->error) return NULL
 
 void print_AST_(AST *ast, size_t level)
 {
@@ -885,6 +903,7 @@ AST *destroy_AST(AST *ast)
 Parser *new_parser(char *file, char *source, Token *tokens)
 {
     Parser *parser = malloc(sizeof(Parser));
+    parser->error = 0;
     parser->tokens = tokens;
     parser->file = file;
     parser->source = source;
@@ -931,7 +950,8 @@ Token *no_eof(Parser *parser)
     if (parser->tokens == NULL)
     {
         parser_error(parser, "Unexpected EOF\n");
-        exit(1);
+        parser->error = 1;
+        return NULL;
     }
 
     Token *token = parser->tokens;
@@ -943,13 +963,15 @@ Token *no_eof(Parser *parser)
 Token *expect(Parser *parser, TokenKind kind)
 {
     Token *token = no_eof(parser);
+    if (token == NULL) return NULL;
 
     if (token->kind != kind)
     {
         parser_error(parser, "Wrong token kind, expected %s, got %s\n",
                 strtokkind(kind),
                 strtokkind(token->kind));
-        exit(1);
+        parser->error = 1;
+        return NULL;
     }
 
     return token;
@@ -960,6 +982,7 @@ void print_AST(AST *tree);
 AST *parse_value(Parser *parser)
 {
     Token *token = no_eof(parser);
+    if (token == NULL) return NULL;
 
     if (token->kind == TK_NUMBER
             || token->kind == TK_STRING
@@ -970,10 +993,10 @@ AST *parse_value(Parser *parser)
         return ast;
     }
 
-
     parser_error(parser, "Wrong token kind, expected name|string|number|char-string, got %s\n",
             strtokkind(token->kind));
-    exit(1);
+    parser->error = 1;
+    return NULL;
 }
 
 AST *parse_tree(Parser *parser)
@@ -981,6 +1004,7 @@ AST *parse_tree(Parser *parser)
     AST *tree = new_AST(AK_TREE, NULL);
 
     expect(parser, TK_LPAREN);
+    PROPERROR();
 
     if (parser->tokens != NULL)
     {
@@ -996,23 +1020,34 @@ AST *parse_tree(Parser *parser)
     for (;;)
     {
         child = parse(parser);
+        PROPERROR();
         if (child == NULL) break;
 
         tree->children_count++;
         tree->children = reallocarray(tree->children, tree->children_count, sizeof(AST*));
         tree->children[tree->children_count-1] = child;
 
+        if (parser->tokens == NULL)
+        {
+            parser_error(parser, "Unexpected EOF\n");
+            parser->error = 1;
+            return NULL;
+        }
+
         if (parser->tokens->kind == TK_RPAREN) break;
 
         if (parser->tokens->kind != TK_DOT) continue;
 
         expect(parser, TK_DOT);
+        PROPERROR();
 
         child = parse(parser);
+        PROPERROR();
         if (child == NULL)
         {
             parser_error(parser, "Expected expression after dot\n");
-            exit(1);
+            parser->error = 1;
+            return NULL;
         }
 
         if (child->kind != AK_TREE && child->kind != AK_DOTTED)
@@ -1044,6 +1079,7 @@ AST *parse_tree(Parser *parser)
     }
 
     expect(parser, TK_RPAREN);
+    PROPERROR();
 
     return tree;
 }
@@ -1089,11 +1125,13 @@ AST *parse_next_as_child_(Parser *parser)
     nb->children_count = 1;
 
     AST *child = parse(parser);
+    PROPERROR();
 
     if (child == NULL)
     {
         parser_error(parser, "Unexpected EOF\n");
-        exit(1);
+        parser->error = 1;
+        return NULL;
     }
 
     nb->children[0] = child;
@@ -1104,8 +1142,10 @@ AST *parse_next_as_child_(Parser *parser)
 AST *parse_quote(Parser *parser)
 {
     expect(parser, TK_TICK);
+    PROPERROR();
 
     AST *quote = parse_next_as_child_(parser);
+    PROPERROR();
     quote->kind = AK_QUOTE;
 
     return quote;
@@ -1114,8 +1154,10 @@ AST *parse_quote(Parser *parser)
 AST *parse_backquote(Parser *parser)
 {
     expect(parser, TK_BACKTICK);
+    PROPERROR();
 
     AST *bquote = parse_next_as_child_(parser);
+    PROPERROR();
     bquote->kind = AK_BACKQUOTE;
 
     return bquote;
@@ -1124,9 +1166,11 @@ AST *parse_backquote(Parser *parser)
 AST *parse_bq_eval(Parser *parser)
 {
     expect(parser, TK_COMMA);
+    PROPERROR();
 
     AST *bqe = parse_next_as_child_(parser);
-    bqe ->kind = AK_BQ_EVAL;
+    PROPERROR();
+    bqe->kind = AK_BQ_EVAL;
 
     return bqe;
 }
@@ -1134,8 +1178,10 @@ AST *parse_bq_eval(Parser *parser)
 AST *parse_bq_expand(Parser *parser)
 {
     expect(parser, TK_COMMA_AT);
+    PROPERROR();
 
     AST *bqe = parse_next_as_child_(parser);
+    PROPERROR();
     bqe->kind = AK_BQ_EXPAND;
 
     return bqe;
@@ -1153,6 +1199,8 @@ AST *parse_root(Parser *parser)
         root->children = reallocarray(root->children, root->children_count, sizeof(AST*));
         root->children[root->children_count-1] = child;
     }
+
+    PROPERROR();
 
     return root;
 }
