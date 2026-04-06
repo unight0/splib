@@ -42,6 +42,7 @@
 #define _SPLIB_H
 
 #include <stdlib.h>
+#include <stdio.h>
 
 /* Forward-declarations of structures */ 
 // {{{
@@ -80,6 +81,10 @@ enum TokenKind
     TK_COMMA,
     // ,@
     TK_COMMA_AT,
+    // #\<chrstr>
+    TK_CHAR_STRING,
+    // .
+    TK_DOT,
 };
 typedef enum TokenKind TokenKind;
 
@@ -116,6 +121,8 @@ enum ASTKind
     AK_BQ_EVAL,
     // ,@<expr>
     AK_BQ_EXPAND,
+    // (<e1> <e2> ... <eN> . <eM>)
+    AK_DOTTED,
 };
 typedef enum ASTKind ASTKind;
 
@@ -130,6 +137,7 @@ struct AST
 struct Parser
 {
     char *file;
+    char *source;
     Token *tokens;
 };
 /// }}}
@@ -143,8 +151,10 @@ struct Parser
 Lexer *new_lexer(char *file, char *source);
 
 // Create a new parser. 'tokens' refers to the head
-// of a linked list of tokens
-Parser *new_parser(char *file, Token *tokens);
+// of a linked list of tokens.
+// *file and *source may be NULL, they are for error-reporting
+// purposes only.
+Parser *new_parser(char *file, char *source, Token *tokens);
 
 // Free the lexer. Does *not* free the source.
 // *lexer may be NULL. Always returns NULL (for convenience)
@@ -201,6 +211,11 @@ void print_AST(AST *tree);
 // Allocate a new string that is a slice between begin and end
 char *slice(char *begin, char *end);
 
+// Display the line and column from the source like so to *file:
+//  hello, world, this is a line
+//                          ^
+char *show_position(FILE *to, char *source, size_t line, size_t col);
+
 // Is an allowed character in a name
 int is_namechar(char ch);
 
@@ -239,6 +254,7 @@ Token *lex_number_b8(Lexer *lexer);
 Token *lex_number_b2(Lexer *lexer);
 Token *lex_number_b10(Lexer *lexer);
 Token *lex_name(Lexer *lexer);
+Token *lex_char_string(Lexer *lexer);
 
 // }}}
 
@@ -351,6 +367,8 @@ void lexer_error(Lexer *lexer, char *efmt, ...)
     vfprintf(stderr, efmt, valst); 
 
     va_end(valst);
+
+    show_position(stderr, lexer->source, lexer->locus.line, lexer->locus.col);
 }
 
 const char *strtokkind(TokenKind kind)
@@ -366,6 +384,8 @@ const char *strtokkind(TokenKind kind)
         case TK_BACKTICK: return "backtick";
         case TK_COMMA: return "comma";
         case TK_COMMA_AT: return "comma-at";
+        case TK_CHAR_STRING: return "char-string";
+        case TK_DOT: return "dot";
     }
     return "unknown token";
 }
@@ -417,12 +437,57 @@ void lexer_advance(Lexer *lexer)
     lexer->locus.col++;
 }
 
+char *show_position(FILE *to, char *source, size_t line, size_t col)
+{
+    assert(source != NULL);
+    assert(to != NULL);
+    assert(line);
+    assert(col);
+
+    size_t cur_line = 1;
+    char *pos;
+    for (pos = source; *pos && cur_line < line; pos++)
+    {
+        if (*pos == '\n') cur_line++;
+    }
+
+    if(!*pos)
+    {
+        fprintf(stderr, "INTERNAL ERROR: Invalid source provided for show_position()\n");
+        exit(2);
+    }
+
+    char *line_begin = pos;
+
+    for (; *pos && *pos != '\n'; pos++);
+
+    char *line_end = pos;
+
+    if(line_end - line_begin + 1 < col)
+    {
+        fprintf(stderr, "INTERNAL ERROR: Invalid source provided for show_position()\n");
+        exit(2);
+    }
+
+    char *line_str = slice(line_begin, line_end);
+
+    fprintf(to, "%s\n", line_str);
+    for (size_t i = 1; i < col; i++)
+    {
+        fputc(' ', to);
+    }
+    fprintf(to, "^\n");
+
+    free(line_str);
+}
+
 int is_namechar(char ch)
 {
     return !isspace(ch)
         && (ch != '(')
         && (ch != ')')
-        && (ch != '\'');
+        && (ch != '\'')
+        && (ch > ' ');
 }
 
 int is_prefix(char *str, char *prefix)
@@ -504,6 +569,12 @@ Token *lex_number_b10(Lexer *lexer)
     size_t dots = 0;
 
     char *begin = lexer->position;
+
+    // Skip leading sign if present
+    if (*lexer->position == '+' || *lexer->position == '-')
+    {
+        lexer_advance(lexer);
+    }
 
     while (isdigit(*lexer->position)
             || *lexer->position == '.')
@@ -608,6 +679,40 @@ Token *lex_name(Lexer *lexer)
     return token;
 }
 
+Token *lex_char_string(Lexer *lexer)
+{
+    char *begin = lexer->position;
+
+    // Skip #\ prefix
+    lexer_advance(lexer);
+    lexer_advance(lexer);
+
+    if (!*lexer->position)
+    {
+        lexer_error(lexer, "Expected character after #\\\n");
+        exit(1);
+    }
+
+    // Always consume the first character (could be anything)
+    char first = *lexer->position;
+    lexer_advance(lexer);
+
+    // If the first char is a namechar, keep reading namechars
+    if (is_namechar(first))
+    {
+        while (is_namechar(*lexer->position))
+            lexer_advance(lexer);
+    }
+
+    char *end = lexer->position;
+    char *value = slice(begin, end);
+
+    Token *token = new_token(TK_CHAR_STRING, value);
+    assign_locus(token, lexer);
+
+    return token;
+}
+
 Token *lexer_next(Lexer *lexer)
 {
     while (isspace(*lexer->position)) lexer_advance(lexer);
@@ -651,6 +756,28 @@ Token *lexer_next(Lexer *lexer)
             return token;
         case '"':
             return lex_string(lexer);
+        case '+':
+        case '-':
+            if (isdigit(*(lexer->position + 1)))
+            {
+                return lex_number_b10(lexer);
+            }
+            break;
+        case '#':
+            if (*(lexer->position + 1) == '\\')
+            {
+                return lex_char_string(lexer);
+            }
+            break;
+        case '.':
+            if (!is_namechar(*(lexer->position + 1)))
+            {
+                lexer_advance(lexer);
+                token = new_token(TK_DOT, NULL);
+                assign_locus(token, lexer);
+                return token;
+            }
+            break;
     }
 
     if (isdigit(*lexer->position)) return lex_number(lexer);
@@ -671,6 +798,12 @@ void print_AST_(AST *ast, size_t level)
 {
     for (size_t i = 0; i < level; i++)
         putchar(' ');
+
+    if (ast == NULL)
+    {
+        printf("(null AST)\n");
+        return;
+    }
 
     if (ast->value != NULL)
     {
@@ -701,6 +834,7 @@ const char *strASTkind(ASTKind kind)
         case AK_BACKQUOTE: return "backquote";
         case AK_BQ_EVAL: return "bq-eval";
         case AK_BQ_EXPAND: return "bq-expand";
+        case AK_DOTTED: return "dotted";
     }
     return "unknown AST kind";
 }
@@ -739,11 +873,12 @@ AST *destroy_AST(AST *ast)
     return NULL;
 }
 
-Parser *new_parser(char *file, Token *tokens)
+Parser *new_parser(char *file, char *source, Token *tokens)
 {
     Parser *parser = malloc(sizeof(Parser));
     parser->tokens = tokens;
     parser->file = file;
+    parser->source = source;
     return parser;
 }
 
@@ -777,6 +912,9 @@ end:
     vfprintf(stderr, efmt, valst); 
 
     va_end(valst);
+
+    if (parser->tokens != NULL)
+        show_position(stderr, parser->source, locus.line, locus.col);
 }
 
 Token *no_eof(Parser *parser)
@@ -795,22 +933,15 @@ Token *no_eof(Parser *parser)
 
 Token *expect(Parser *parser, TokenKind kind)
 {
-    if (parser->tokens == NULL)
-    {
-        parser_error(parser, "Unexpected EOF\n");
-        exit(1);
-    }
+    Token *token = no_eof(parser);
 
-    if (parser->tokens->kind != kind)
+    if (token->kind != kind)
     {
         parser_error(parser, "Wrong token kind, expected %s, got %s\n",
                 strtokkind(kind),
-                strtokkind(parser->tokens->kind));
+                strtokkind(token->kind));
         exit(1);
     }
-
-    Token *token = parser->tokens;
-    parser->tokens = parser->tokens->next;
 
     return token;
 }
@@ -823,14 +954,15 @@ AST *parse_value(Parser *parser)
 
     if (token->kind == TK_NUMBER
             || token->kind == TK_STRING
-            || token->kind == TK_NAME)
+            || token->kind == TK_NAME
+            || token->kind == TK_CHAR_STRING)
     {
         AST *ast = new_AST(AK_VALUE, token);
         return ast;
     }
 
 
-    parser_error(parser, "Wrong token kind, expected name|string|number, got %s\n",
+    parser_error(parser, "Wrong token kind, expected name|string|number|char-string, got %s\n",
             strtokkind(token->kind));
     exit(1);
 }
@@ -840,6 +972,15 @@ AST *parse_tree(Parser *parser)
     AST *tree = new_AST(AK_TREE, NULL);
 
     expect(parser, TK_LPAREN);
+
+    if (parser->tokens != NULL)
+    {
+        if (parser->tokens->kind == TK_RPAREN)
+        {
+            parser->tokens = parser->tokens->next;
+            return tree;
+        }
+    }
 
     AST *child = NULL;
 
@@ -853,6 +994,44 @@ AST *parse_tree(Parser *parser)
         tree->children[tree->children_count-1] = child;
 
         if (parser->tokens->kind == TK_RPAREN) break;
+
+        if (parser->tokens->kind != TK_DOT) continue;
+
+        expect(parser, TK_DOT);
+
+        child = parse(parser);
+        if (child == NULL)
+        {
+            parser_error(parser, "Expected expression after dot\n");
+            exit(1);
+        }
+
+        if (child->kind != AK_TREE && child->kind != AK_DOTTED)
+        {
+            tree->children_count++;
+            tree->children = reallocarray(tree->children, tree->children_count, sizeof(AST*));
+            tree->children[tree->children_count-1] = child;
+
+            tree->kind = AK_DOTTED;
+            break;
+        }
+
+        // Collapse (a . (b ...)) into (a b ...)
+        tree->kind = child->kind;
+
+        size_t new_count = tree->children_count + child->children_count;
+        tree->children = reallocarray(tree->children, new_count, sizeof(AST*));
+        for (size_t i = 0; i < child->children_count; i++)
+        {
+            tree->children[tree->children_count + i] = child->children[i];
+        }
+        tree->children_count = new_count;
+
+        free(child->children);
+        child->children = NULL;
+        child->children_count = 0;
+        free(child);
+        break;
     }
 
     expect(parser, TK_RPAREN);
@@ -868,7 +1047,8 @@ AST *parse(Parser *parser)
 
     if (token->kind == TK_NUMBER
             || token->kind == TK_STRING
-            || token->kind == TK_NAME)
+            || token->kind == TK_NAME
+            || token->kind == TK_CHAR_STRING)
     {
         return parse_value(parser);
     }
@@ -900,6 +1080,12 @@ AST *parse_next_as_child_(Parser *parser)
     nb->children_count = 1;
 
     AST *child = parse(parser);
+
+    if (child == NULL)
+    {
+        parser_error(parser, "Unexpected EOF\n");
+        exit(1);
+    }
 
     nb->children[0] = child;
 

@@ -6,6 +6,10 @@
 #define _SPLIB_IMPLEMENTATION
 #include "splib.h"
 
+// TO DO:
+// Comments
+// Option to disable error reporting/crashes (if possible)
+
 void parse_one(char *source)
 {
     Lexer *lexer = new_lexer(NULL, source);
@@ -20,7 +24,7 @@ void parse_one(char *source)
         exit(1);
     }
 
-    Parser *parser = new_parser(NULL, tokens);
+    Parser *parser = new_parser(NULL, source, tokens);
 
     AST *root = parse_root(parser);
     
