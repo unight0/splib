@@ -715,7 +715,16 @@ Token *lex_char_string(Lexer *lexer)
 
 Token *lexer_next(Lexer *lexer)
 {
-    while (isspace(*lexer->position)) lexer_advance(lexer);
+    for (;;)
+    {
+        while (isspace(*lexer->position)) lexer_advance(lexer);
+
+        if (*lexer->position != ';') break;
+
+        // Skip comment until end of line
+        while (*lexer->position && *lexer->position != '\n')
+            lexer_advance(lexer);
+    }
 
     if (!*lexer->position) return NULL;
 

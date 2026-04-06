@@ -1,17 +1,15 @@
 
-
 CC = gcc
-CFLAGS = -g
-LD = gcc
-LDFLAGS = -g
+CFLAGS = -g -I.
 
-#CC = afl-gcc-fast
-#LD = afl-gcc-fast
+sp: examples/main.c splib.h
+	$(CC) $(CFLAGS) examples/main.c -o $@
 
-sp: main.o
-	$(LD) $(LDFLAGS) $^ -o $@
+fuzz: examples/main.c splib.h
+	AFL_CC=gcc afl-gcc-fast $(CFLAGS) examples/main.c -o sp-fuzz
 
-main.o: main.c
+fuzz-run: fuzz
+	afl-fuzz -i in-fuzz -o findings-fuzz ./sp-fuzz
 
 clean:
-	rm *.o
+	rm -f sp sp-fuzz

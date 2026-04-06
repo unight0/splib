@@ -7,7 +7,6 @@
 #include "splib.h"
 
 // TO DO:
-// Comments
 // Option to disable error reporting/crashes (if possible)
 
 void parse_one(char *source)

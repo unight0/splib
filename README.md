@@ -58,8 +58,54 @@ destroy_lexer(lexer);
 | Unquote | `AK_BQ_EVAL` | `,expr` |
 | Splice-unquote | `AK_BQ_EXPAND` | `,@expr` |
 
+Comments start with `;` and extend to the end of the line.
+
 Dotted pairs are automatically collapsed: `(a . (b . c))` becomes `(a b . c)`.
 If the cdr is a proper list, the result is a proper list: `(a . (b c))` becomes `(a b c)`.
+
+## Building
+
+```
+make sp          # build the example binary
+make fuzz        # build AFL++-instrumented binary (sp-fuzz)
+make fuzz-run    # build and run AFL++ fuzzer
+make clean       # remove binaries
+```
+
+### Examples
+
+`examples/main.c` is a small driver that parses S-expressions from argv or
+stdin and prints the resulting AST:
+
+```
+$ ./sp '(define (f x) (+ x 1))'
+root
+ tree
+  value define
+  tree
+   value f
+   value x
+  tree
+   value +
+   value x
+   value 1
+
+$ echo '(a . (b . c))' | ./sp
+root
+ dotted
+  value a
+  value b
+  value c
+```
+
+### Fuzzing
+
+Seed inputs live in `in-fuzz/`. Findings are written to `findings-fuzz/`.
+Requires [AFL++](https://github.com/AFLplusplus/AFLplusplus).
+
+```
+make fuzz-run
+```
 
 ## Interface
 
