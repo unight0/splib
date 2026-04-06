@@ -3,10 +3,8 @@
 #include <string.h>
 #include <assert.h>
 
-//#include "lexer.h"
-//#include "parser.h"
-
-#include "sp.h"
+#define _SPLIB_IMPLEMENTATION
+#include "splib.h"
 
 void parse_one(char *source)
 {
