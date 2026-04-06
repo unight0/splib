@@ -25,6 +25,15 @@ void parse_one(char *source)
     AST *root = parse_root(parser);
     
     print_AST(root);
+
+    root = destroy_AST(root);
+
+    destroy_all_tokens(tokens);
+
+    tokens = tokens_tail = NULL;
+
+    parser = destroy_parser(parser);
+    lexer = destroy_lexer(lexer);
 }
 
 char *read_stdin(void)
@@ -51,7 +60,9 @@ int main(int argc, char **argv)
 {
     if (argc < 2)
     {
-        parse_one(read_stdin());
+        char *input = read_stdin();
+        parse_one(input);
+        free(input);
         return 0;
     }
 

@@ -1,6 +1,16 @@
 /*
  * SPLIB -- S-expressions Parsing LIBrary.
  *
+ * This library is meant as a single-header drop-in lexer & parser for S-expressions.
+ * See 'Front-facing functions' below for an interface.
+ *
+ * Define _SPLIB_IMPLEMENTATION *BEFORE* including splib.h in *one* file.
+ * Other files *should not* define this macro.
+ * Example:
+ *   #define _SPLIB_IMPLEMENTATION
+ *   #include "splib.h"
+ *
+ *************************************************************************
  * This is free and unencumbered software released into the public domain.
  * 
  * Anyone is free to copy, modify, publish, use, compile, sell, or
@@ -23,6 +33,7 @@
  * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
  * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
  * OTHER DEALINGS IN THE SOFTWARE.
+ *************************************************************************
  *
  */
 
@@ -32,13 +43,17 @@
 
 #include <stdlib.h>
 
+/* Forward-declarations of structures */ 
+// {{{
 typedef struct Lexer Lexer;
 typedef struct Parser Parser;
-
 typedef struct Locus Locus;
 typedef struct Token Token;
 typedef struct AST AST;
+/// }}}
 
+/* Structure and enum implementation */
+/// {{{
 struct Locus
 {
     char *file;
@@ -51,14 +66,12 @@ enum TokenKind
     TK_LPAREN,
     // )
     TK_RPAREN,
-
     // "string"
     TK_STRING,
     // 102034, 0x0100fFaB, 0o070010354, 0b101001
     TK_NUMBER,
     // name
     TK_NAME,
-
     // '
     TK_TICK,
     // `
@@ -78,6 +91,7 @@ struct Token
     Token *next;
 };
 
+// Tip: after lexing, check balance before passing the output to the parser
 struct Lexer
 {
     ssize_t balance;
@@ -118,47 +132,106 @@ struct Parser
     char *file;
     Token *tokens;
 };
+/// }}}
 
 /* Front-facing functions */
+// {{{
+
 // Create a new lexer. 'file' can be NULL and is for
 // error-reporting purposes only. Source must be non-null.
 // Source will not be altered, it is read-only
 Lexer *new_lexer(char *file, char *source);
+
 // Create a new parser. 'tokens' refers to the head
 // of a linked list of tokens
 Parser *new_parser(char *file, Token *tokens);
+
+// Free the lexer. Does *not* free the source.
+// *lexer may be NULL. Always returns NULL (for convenience)
+Lexer *destroy_lexer(Lexer *lexer);
+
+// Free the parser. Does *not* free the linked list of tokens.
+// *parser may be NULL. Always returns NULL.
+Parser *destroy_parser(Parser *parser);
+
 // Lex all of the tokens from the source, storing them
 // as a linked list with head stored at **head and tail
 // at **tail
 void lex_all(Lexer *lexer, Token **head, Token **tail);
+
+// Destroy the token. Frees the associated value string
+// *token may be NULL. Always returns NULL.
+Token *destroy_token(Token *token);
+
+// Destroy all tokens within a linked list of tokens.
+// *head may be NULL.
+void destroy_all_tokens(Token *head);
+
 // Parse the root of the program -- a sequence of S-expressions
 AST *parse_root(Parser *parser);
+
 // Parse one single S-expression
 AST *parse(Parser *parser);
 
+// Destroys the AST node and all of its children.
+// Does *not* destroy the underlying Token values.
+// Invoke destroy_all_tokens() manually for that.
+// *ast may be NULL. Always returns NULL.
+AST *destroy_AST(AST *ast);
+
+// Print an AST
+void print_AST(AST *tree);
+
+// }}}
+
+/*****************************************************************
+ * Back-facing functions.
+ *
+ * The 'General helper functions' below may be useful outside of
+ * S-expression parsing.
+ *
+ * Other functionality is at your disposal, but is not expected to
+ * be used directly often.
+ *****************************************************************
+ */
+
 /* General helper functions */
+// {{{
+
 // Allocate a new string that is a slice between begin and end
 char *slice(char *begin, char *end);
+
 // Is an allowed character in a name
 int is_namechar(char ch);
+
 // Is a base-8 digit
 int is_odigit(char chr);
+
 // Is a base-2 digit
 int is_bdigit(char chr);
+
 // Is prefix a prefix of str
 int is_prefix(char *str, char *prefix);
+
+// }}}
 
 /* Misc constructors */
 Token *new_token(TokenKind kind, char *value);
 AST *new_AST(ASTKind kind, Token *value);
 
 /* Lexer functions */
+// {{{
+
 // Assign the current locus of the lexer to the token
 void assign_locus(Token *token, Lexer *lexer);
+
 // Advance the lexer to the next character in source
 void lexer_advance(Lexer *lexer);
+
 // Obtain next token
 Token *lexer_next(Lexer *lexer);
+
+// Self-explanatory, see enum TokenKind
 Token *lex_string(Lexer *lexer);
 Token *lex_number(Lexer *lexer);
 Token *lex_number_b16(Lexer *lexer);
@@ -167,31 +240,35 @@ Token *lex_number_b2(Lexer *lexer);
 Token *lex_number_b10(Lexer *lexer);
 Token *lex_name(Lexer *lexer);
 
+// }}}
+
 /* Parser functions */
+// {{{
+
 // Expect token kind 'kind', return the consumed token, throw error otherwise
 Token *expect(Parser *parser, TokenKind kind);
+
 // Assert that there are tokens remaining to parse, throw error otherwise
 Token *no_eof(Parser *parser);
+
+// Self-explanatory, see enum ASTKind
 AST *parse_value(Parser *parser);
-// Quote: 'EXPR
 AST *parse_quote(Parser *parser);
-// Backquote: `EXPR
 AST *parse_backquote(Parser *parser);
-// Bq stands for 'backquote'
-// bq-eval: ,EXPR
 AST *parse_bq_eval(Parser *parser);
-// bq-expand: ,@EXPR
 AST *parse_bq_expand(Parser *parser);
 AST *parse_tree(Parser *parser);
+
+// }}}
 
 /* Error reporting & display */
 void lexer_error(Lexer *lexer, char *efmt, ...);
 void parser_error(Parser *parser, char *efmt, ...);
-void print_AST(AST *tree);
 const char *strtokkind(TokenKind kind);
 const char *strASTkind(ASTKind kind);
 
 /* Implementation */
+
 #ifdef _SPLIB_IMPLEMENTATION
 
 #include <stdio.h>
@@ -199,6 +276,10 @@ const char *strASTkind(ASTKind kind);
 #include <assert.h>
 #include <stdarg.h>
 #include <ctype.h>
+
+/* Lexer implementation */
+
+// {{{
 
 void lex_all(Lexer *lexer, Token **head, Token **tail)
 {
@@ -232,9 +313,31 @@ Token *new_token(TokenKind kind, char *value)
     Token *token = malloc(sizeof(Token));
     token->kind = kind;
     token->value = value;
+    token->next = NULL;
+
     return token;
 }
 
+Token *destroy_token(Token *token)
+{
+    if (token == NULL) return NULL;
+
+    free(token->value);
+
+    free(token);
+
+    return NULL;
+}
+
+void destroy_all_tokens(Token *head)
+{
+    while (head != NULL)
+    {
+        Token *next = head->next;
+        destroy_token(head);
+        head = next;
+    }
+}
 
 void lexer_error(Lexer *lexer, char *efmt, ...)
 {
@@ -285,6 +388,15 @@ Lexer *new_lexer(char *file, char *source)
     lexer->balance = 0;
 
     return lexer;
+}
+
+Lexer *destroy_lexer(Lexer *lexer)
+{
+    if (lexer == NULL) return NULL;
+
+    free(lexer);
+
+    return NULL;
 }
 
 void lexer_advance(Lexer *lexer)
@@ -549,7 +661,11 @@ Token *lexer_next(Lexer *lexer)
     exit(1);
 }
 
+// }}}
+
 /* Parser implementation */
+
+// {{{
 
 void print_AST_(AST *ast, size_t level)
 {
@@ -605,12 +721,39 @@ AST *new_AST(ASTKind kind, Token *value)
     return ast;
 }
 
+AST *destroy_AST(AST *ast)
+{
+    if (ast == NULL) return NULL;
+
+    if (ast->children_count)
+    {
+        for (size_t i = 0; i < ast->children_count; i++)
+        {
+            destroy_AST(ast->children[i]);
+        }
+        free(ast->children);
+    }
+
+    free(ast);
+
+    return NULL;
+}
+
 Parser *new_parser(char *file, Token *tokens)
 {
     Parser *parser = malloc(sizeof(Parser));
     parser->tokens = tokens;
     parser->file = file;
     return parser;
+}
+
+Parser *destroy_parser(Parser *parser)
+{
+    if (parser == NULL) return NULL;
+
+    free(parser);
+
+    return NULL;
 }
 
 void parser_error(Parser *parser, char *efmt, ...)
@@ -818,6 +961,8 @@ AST *parse_root(Parser *parser)
 
     return root;
 }
+
+// }}}
 
 #endif /* ifdef _SP_IMPLEMENTATION */
 
