@@ -104,8 +104,24 @@ Seed inputs live in `in-fuzz/`. Findings are written to `findings-fuzz/`.
 Requires [AFL++](https://github.com/AFLplusplus/AFLplusplus).
 
 ```
-make fuzz-run
+make fuzz                       # build sp-fuzz with afl-gcc-fast
+make fuzz-run                   # parallel: 1 main + 15 secondary instances
+make fuzz-run-resume            # resume parallel run from existing findings
+make fuzz-showmap               # report total unique edges reached
+make fuzz-gcov                  # build gcov binary, replay queue, generate reports
 ```
+
+A custom AFL++ dictionary (`splib.dict`) ships with the project, covering all
+parser tokens (parens, quote/backquote/comma, dot, `#\`, base prefixes,
+escapes, etc.) plus a few full-form examples (`(a . b)`, `` `(,a ,@b) ``).
+
+#### Coverage status
+
+Fuzzed in parallel mode with the dictionary, splib reaches **402 unique AFL
+edges (~0.61% map density)** and **~96% line coverage** on `splib.h`. The
+remaining lines are exclusively defensive paths (impossible-enum defaults,
+internal-error `exit(2)`s, and a few error paths that are short-circuited
+by earlier checks). No crashes or hangs are currently known.
 
 ## Interface
 

@@ -823,8 +823,7 @@ Token *lexer_next(Lexer *lexer)
 
 void print_AST_(AST *ast, size_t level)
 {
-    for (size_t i = 0; i < level; i++)
-        putchar(' ');
+    printf("%*s", (int)level, "");
 
     if (ast == NULL)
     {

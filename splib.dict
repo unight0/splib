@@ -1,0 +1,55 @@
+# AFL++ dictionary for splib S-expression parser
+# Use with: afl-fuzz -x splib.dict ...
+
+# Structural
+lparen="("
+rparen=")"
+dot="."
+quote="'"
+backquote="`"
+comma=","
+comma_at=",@"
+
+# String delimiter and escapes
+dquote="\""
+escaped_quote="\\\""
+escaped_backslash="\\\\"
+
+# Comment
+semicolon=";"
+
+# Character string prefix
+char_prefix="#\\"
+char_space="#\\space"
+char_newline="#\\newline"
+char_tab="#\\tab"
+char_a="#\\a"
+char_lparen="#\\("
+
+# Number prefixes
+hex_prefix="0x"
+oct_prefix="0o"
+bin_prefix="0b"
+
+# Signed numbers
+plus_zero="+0"
+minus_zero="-0"
+plus_one="+1"
+minus_one="-1"
+
+# Numeric digits and bases
+hex_digits="0xdeadbeef"
+oct_digits="0o755"
+bin_digits="0b1010"
+float="3.14"
+
+# Common atoms
+empty_string="\"\""
+empty_list="()"
+
+# Dotted forms
+simple_dotted="(a . b)"
+nested_dotted="(a . (b . c))"
+
+# Quasiquoting
+quasiquote_form="`(,a ,@b)"
