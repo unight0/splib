@@ -115,10 +115,10 @@ A custom AFL++ dictionary (`splib.dict`) ships with the project, covering all
 parser tokens (parens, quote/backquote/comma, dot, `#\`, base prefixes,
 escapes, etc.) plus a few full-form examples (`(a . b)`, `` `(,a ,@b) ``).
 
-#### Coverage status
+#### Fuzzing coverage status
 
-Fuzzed in parallel mode with the dictionary, splib reaches **402 unique AFL
-edges (~0.61% map density)** and **~96% line coverage** on `splib.h`. The
+Fuzzed in parallel mode with the dictionary, splib reaches 402 unique AFL
+edges (~0.61% map density) and ~96% line coverage on `splib.h`. The
 remaining lines are exclusively defensive paths (impossible-enum defaults,
 internal-error `exit(2)`s, and a few error paths that are short-circuited
 by earlier checks). No crashes or hangs are currently known.
