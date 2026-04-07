@@ -1,6 +1,7 @@
 # SPLIB
 
-Single-header drop-in lexer & parser for S-expressions in C.
+Single-header drop-in lexer & parser for S-expressions in C. Serialization
+functionality is also available.
 
 ## Usage
 
@@ -27,6 +28,11 @@ AST *root = parse_root(parser);
 
 print_AST(root);
 
+SSerializer *ser = new_sserializer();
+serialize_AST(ser, root);
+printf("%s\n", ser->output);
+
+destroy_sserializer(ser);
 destroy_AST(root);
 destroy_all_tokens(head);
 destroy_parser(parser);
@@ -148,6 +154,24 @@ All destroy functions accept NULL and always return NULL.
 - `parse(parser)` -- parse a single S-expression; returns NULL on EOF or error
 - `print_AST(ast)` -- print the AST tree to stdout
 - Check `parser->error` to distinguish parse errors from EOF
+
+### Serialization
+
+- `new_sserializer()` -- create an S-expression serializer with a growable output buffer
+- `destroy_sserializer(ser)` -- free the serializer and its output buffer
+- `sserializer_append(ser, str)` -- append a raw string to the output buffer
+- `serialize_AST(ser, ast)` -- serialize an AST node back into S-expression text; returns a pointer to the slice that was appended. The complete output is available as `ser->output` (NUL-terminated)
+
+Serialization handles all AST kinds: roots (space-separated), trees, dotted
+pairs (with collapsing already applied at parse time), quote/backquote/unquote/
+splice-unquote, and atomic values.
+
+```c
+SSerializer *ser = new_sserializer();
+serialize_AST(ser, root);
+puts(ser->output);
+destroy_sserializer(ser);
+```
 
 ### Error handling
 

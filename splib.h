@@ -1,7 +1,9 @@
-/*
+/*************************************************************************
+ *
  * SPLIB -- S-expressions Parsing LIBrary.
  *
  * This library is meant as a single-header drop-in lexer & parser for S-expressions.
+ * It can also serialize AST nodes back into S-expressions.
  * See 'Front-facing functions' below for an interface.
  *
  * Define _SPLIB_IMPLEMENTATION *BEFORE* including splib.h in *one* file.
@@ -11,6 +13,7 @@
  *   #include "splib.h"
  *
  *************************************************************************
+ *
  * This is free and unencumbered software released into the public domain.
  * 
  * Anyone is free to copy, modify, publish, use, compile, sell, or
@@ -33,9 +36,8 @@
  * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
  * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
  * OTHER DEALINGS IN THE SOFTWARE.
- *************************************************************************
  *
- */
+ *************************************************************************/
 
 
 #ifndef _SPLIB_H
@@ -51,6 +53,7 @@ typedef struct Parser Parser;
 typedef struct Locus Locus;
 typedef struct Token Token;
 typedef struct AST AST;
+typedef struct SSerializer SSerializer;
 /// }}}
 
 /* Structure and enum implementation */
@@ -142,6 +145,13 @@ struct Parser
     char *source;
     Token *tokens;
 };
+
+struct SSerializer
+{
+    size_t capacity;
+    size_t size;
+    char *output;
+};
 /// }}}
 
 /* Front-facing functions */
@@ -196,9 +206,20 @@ AST *destroy_AST(AST *ast);
 // Print an AST
 void print_AST(AST *tree);
 
+// Creates an S-expression serializer
+SSerializer *new_sserializer();
+// Destroyes S-expression serializer. *ser may be NULL.
+// Always returns NULL
+SSerializer *destroy_sserializer(SSerializer *ser);
+
+// Serializes an AST. Returns pointer to the serialized string.
+// Read SSerializer->output for full serialized output.
+char *serialize_AST(SSerializer *ser, AST *ast);
+
 // }}}
 
 /*****************************************************************
+ *
  * Back-facing functions.
  *
  * The 'General helper functions' below may be useful outside of
@@ -206,8 +227,8 @@ void print_AST(AST *tree);
  *
  * Other functionality is at your disposal, but is not expected to
  * be used directly often.
- *****************************************************************
- */
+ *
+ *****************************************************************/
 
 /* General helper functions */
 // {{{
@@ -216,8 +237,8 @@ void print_AST(AST *tree);
 char *slice(char *begin, char *end);
 
 // Display the line and column from the source like so to *file:
-//  hello, world, this is a line
-//                          ^
+// hello, world, this is a line
+//                         ^
 char *show_position(FILE *to, char *source, size_t line, size_t col);
 
 // Is an allowed character in a name
@@ -284,6 +305,27 @@ AST *parse_backquote(Parser *parser);
 AST *parse_bq_eval(Parser *parser);
 AST *parse_bq_expand(Parser *parser);
 AST *parse_tree(Parser *parser);
+
+// }}}
+
+
+/* SSerializer functions */
+// {{{
+
+// Appends *str to serializer output
+void sserializer_append(SSerializer *ser, char *str);
+
+// Self-explanatory.
+// They return the serialized string that was appended to output
+char *serialize_AST(SSerializer *ser, AST *ast);
+char *serialize_root(SSerializer *ser, AST *root);
+char *serialize_value(SSerializer *ser, AST *root);
+char *serialize_tree(SSerializer *ser, AST *root);
+char *serialize_dotted(SSerializer *ser, AST *root);
+char *serialize_quote(SSerializer *ser, AST *root);
+char *serialize_backquote(SSerializer *ser, AST *root);
+char *serialize_bq_eval(SSerializer *ser, AST *root);
+char *serialize_bq_expand(SSerializer *ser, AST *root);
 
 // }}}
 

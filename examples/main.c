@@ -4,9 +4,148 @@
 #include <assert.h>
 
 #define _SPLIB_IMPLEMENTATION
-#include "splib.h"
+#include "../splib.h"
 
-// TO DO:
+SSerializer *new_sserializer()
+{
+    SSerializer *ser = malloc(sizeof(SSerializer));
+    ser->size = 0;
+    ser->capacity = 16;
+    ser->output = malloc(16);
+    *ser->output = 0;
+
+    return ser;
+}
+
+SSerializer *destroy_sserializer(SSerializer *ser)
+{
+    if (ser == NULL) return NULL;
+
+    free(ser->output);
+    free(ser);
+
+    return NULL;
+}
+
+void sserializer_append(SSerializer *ser, char *str)
+{
+    if (str == NULL) return;
+
+    size_t str_sz = strlen(str);
+    size_t need_capacity = ser->size + str_sz;
+
+    if (need_capacity > ser->capacity)
+    {
+        size_t doubled = ser->capacity * 2;
+        ser->capacity = doubled >= need_capacity ? doubled : need_capacity;
+        ser->output = realloc(ser->output, ser->capacity);
+    }
+
+    strncat(ser->output, str, ser->capacity);
+    ser->size += str_sz;
+}
+
+// These return the string that was appended to output
+char *serialize_AST(SSerializer *ser, AST *ast)
+{
+    assert(ser != NULL);
+    assert(ast != NULL);
+
+    switch(ast->kind)
+    {
+        case AK_VALUE: return serialize_value(ser, ast);
+        case AK_TREE: return serialize_tree(ser, ast);
+        case AK_QUOTE: return serialize_quote(ser, ast);
+        case AK_ROOT: return serialize_root(ser, ast);
+        case AK_BACKQUOTE: return serialize_backquote(ser, ast);
+        case AK_BQ_EVAL: return serialize_bq_eval(ser, ast);
+        case AK_BQ_EXPAND: return serialize_bq_expand(ser, ast);
+        case AK_DOTTED: return serialize_dotted(ser, ast);
+    }
+
+    assert(0 && "UNREACHABLE");
+}
+
+#define _SP_SERIALIZER(body)\
+    {\
+    char *_position = ser->output + ser->size;\
+    body;\
+    return _position;\
+    }
+
+char *serialize_root(SSerializer *ser, AST *root)
+    _SP_SERIALIZER
+({
+    for (size_t i = 0; i < root->children_count; i++)
+    {
+        serialize_AST(ser, root->children[i]);
+        if (i < root->children_count - 1)
+            sserializer_append(ser, " ");
+    }
+})
+
+char *serialize_value(SSerializer *ser, AST *value)
+    _SP_SERIALIZER
+({
+    // value->value->value is hilarious...
+    sserializer_append(ser, value->value->value);
+})
+
+char *serialize_tree(SSerializer *ser, AST *ast)
+    _SP_SERIALIZER
+({
+    sserializer_append(ser, "(");
+
+    for (size_t i = 0; i < ast->children_count; i++)
+    {
+        serialize_AST(ser, ast->children[i]);
+        if (i < ast->children_count - 1)
+            sserializer_append(ser, " ");
+    }
+
+    sserializer_append(ser, ")");
+})
+
+char *serialize_dotted(SSerializer *ser, AST *ast)
+    _SP_SERIALIZER
+({
+    sserializer_append(ser, "(");
+
+    assert(ast->children_count >= 2);
+
+    size_t i;
+    for (i = 0; i < ast->children_count - 1; i++)
+    {
+        serialize_AST(ser, ast->children[i]);
+        sserializer_append(ser, " ");
+    }
+
+    sserializer_append(ser, ". ");
+    
+    serialize_AST(ser, ast->children[i]);
+
+    sserializer_append(ser, ")");
+})
+
+#define _SP_QUOTELIKE_SERIALIZER(str)\
+    _SP_SERIALIZER\
+    ({\
+        assert(ast->children_count);\
+        sserializer_append(ser, (str));\
+        serialize_AST(ser, ast->children[0]);\
+    })
+
+char *serialize_quote(SSerializer *ser, AST *ast)
+    _SP_QUOTELIKE_SERIALIZER("'");
+
+char *serialize_backquote(SSerializer *ser, AST *ast)
+    _SP_QUOTELIKE_SERIALIZER("`");
+
+char *serialize_bq_eval(SSerializer *ser, AST *ast)
+    _SP_QUOTELIKE_SERIALIZER(",");
+
+char *serialize_bq_expand(SSerializer *ser, AST *ast)
+    _SP_QUOTELIKE_SERIALIZER(",@");
 
 void parse_one(char *source)
 {
@@ -39,6 +178,14 @@ void parse_one(char *source)
     }
 
     print_AST(root);
+
+    SSerializer *ser = new_sserializer();
+
+    serialize_AST(ser, root);
+
+    printf("%s\n", ser->output);
+
+    ser = destroy_sserializer(ser);
 
     root = destroy_AST(root);
 
