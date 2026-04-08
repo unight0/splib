@@ -3,3 +3,4 @@ sp
 sp-fuzz
 sp-cov
 findings-fuzz
+core.*
