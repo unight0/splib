@@ -65,8 +65,8 @@ char *read_stdin(void)
 
     while(!feof(stdin) && !ferror(stdin))
     {
-        ssize_t got = fread(buffer, 1, 2048, stdin);
-        if (got < 0) break;
+        size_t got = fread(buffer, 1, 2048, stdin);
+        if (!got) break;
         input = realloc(input, input_size + got);
         memcpy(input + input_size - 1, buffer, got);
         input_size += got;

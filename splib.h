@@ -239,7 +239,7 @@ char *slice(char *begin, char *end);
 // Display the line and column from the source like so to *file:
 // hello, world, this is a line
 //                         ^
-char *show_position(FILE *to, char *source, size_t line, size_t col);
+void show_position(FILE *to, char *source, size_t line, size_t col);
 
 // Is an allowed character in a name
 int is_namechar(char ch);
@@ -308,7 +308,6 @@ AST *parse_tree(Parser *parser);
 
 // }}}
 
-
 /* SSerializer functions */
 // {{{
 
@@ -358,12 +357,11 @@ int lex_all(Lexer *lexer, Token **head, Token **tail)
         if (*head == NULL)
         {
             *head = *tail = token;
+            continue;
         }
-        else
-        {
-            (*tail)->next = token;
-            *tail = token;
-        }
+
+        (*tail)->next = token;
+        *tail = token;
     }
 
     if (*lexer->position)
@@ -457,7 +455,7 @@ Lexer *new_lexer(char *file, char *source)
     assert(source != NULL);
 
     Lexer *lexer = malloc(sizeof(Lexer));
-    lexer->locus.file = file;
+    lexer->locus.file = file == NULL ? "(no file)" : file;
     lexer->locus.line = 1;
     lexer->locus.col = 1;
     lexer->source = source;
@@ -494,7 +492,7 @@ void lexer_advance(Lexer *lexer)
     lexer->locus.col++;
 }
 
-char *show_position(FILE *to, char *source, size_t line, size_t col)
+void show_position(FILE *to, char *source, size_t line, size_t col)
 {
     assert(source != NULL);
     assert(to != NULL);
@@ -946,7 +944,7 @@ Parser *new_parser(char *file, char *source, Token *tokens)
     Parser *parser = malloc(sizeof(Parser));
     parser->error = 0;
     parser->tokens = tokens;
-    parser->file = file;
+    parser->file = file == NULL ? "(no file)" : file;
     parser->source = source;
     return parser;
 }
@@ -1314,9 +1312,9 @@ char *serialize_AST(SSerializer *ser, AST *ast)
 
 #define _SP_SERIALIZER(body)\
     {\
-    char *_position = ser->output + ser->size;\
+    size_t _position = ser->size; \
     body;\
-    return _position;\
+    return ser->output + _position;\
     }
 
 char *serialize_root(SSerializer *ser, AST *root)
@@ -1395,6 +1393,6 @@ char *serialize_bq_expand(SSerializer *ser, AST *ast)
 
 // }}}
 
-#endif /* ifdef _SP_IMPLEMENTATION */
+#endif /* #ifdef _SP_IMPLEMENTATION */
 
-#endif /* ifndef _SP_H */
+#endif /* #ifndef _SPLIB_H */

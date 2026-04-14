@@ -2,11 +2,11 @@
 CC = gcc
 CFLAGS = -g -I.
 
-sp: examples/main.c splib.h
-	$(CC) $(CFLAGS) examples/main.c -o $@
+sp: examples/sp.c splib.h
+	$(CC) $(CFLAGS) examples/sp.c -o $@
 
-fuzz: examples/main.c splib.h
-	AFL_CC=gcc afl-gcc-fast $(CFLAGS) examples/main.c -o sp-fuzz
+fuzz: examples/sp.c splib.h
+	AFL_CC=gcc afl-gcc-fast $(CFLAGS) examples/sp.c -o sp-fuzz
 
 fuzz-run: fuzz
 	@trap 'kill $$(jobs -p) 2>/dev/null' EXIT; \
@@ -26,15 +26,15 @@ fuzz-showmap: fuzz
 	afl-showmap -C -i findings-fuzz/main/queue -o coverage.map -- ./sp-fuzz
 	@echo "Total unique edges: $$(wc -l < coverage.map)"
 
-sp-cov: examples/main.c splib.h
-	$(CC) -fprofile-arcs -ftest-coverage $(CFLAGS) examples/main.c -o sp-cov
+sp-cov: examples/sp.c splib.h
+	$(CC) -fprofile-arcs -ftest-coverage $(CFLAGS) examples/sp.c -o sp-cov
 
 fuzz-gcov: sp-cov
 	@for f in findings-fuzz/main/queue/id:*; do \
 		./sp-cov < "$$f" >/dev/null 2>&1 || true; \
 	done
 	gcov sp-cov-main
-	@echo "Coverage report: main.c.gcov, splib.h.gcov"
+	@echo "Coverage report: sp.c.gcov, splib.h.gcov"
 	@echo "Lines marked '#####' are unreached"
 
 clean:
